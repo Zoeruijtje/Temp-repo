@@ -1,0 +1,32 @@
+name: Temporary audio bridge
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fetch-audio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download generated narration segments
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audio-export
+          curl -L --fail --retry 4 -o audio-export/01-intro.mp3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/d75ec9fc-9a87-41b0-8f6a-3e72aa7da8b8.mp3'
+          curl -L --fail --retry 4 -o audio-export/02-routing.mp3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/77ef7102-aca8-426a-9b86-eefc2eabe868.mp3'
+          curl -L --fail --retry 4 -o audio-export/03-checks.mp3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/fdfb3fdc-2df8-4711-b8fb-1a8223ee9471.mp3'
+          curl -L --fail --retry 4 -o audio-export/04-response.mp3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/bd679b5a-9144-4d30-ab1d-36ae87a8e90b.mp3'
+          curl -L --fail --retry 4 -o audio-export/05-settlement.mp3 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/7fc326b3-68bc-4763-8ff8-f9a6c5ce2647.mp3'
+          test $(find audio-export -type f -size +10000c | wc -l) -eq 5
+      - name: Commit temporary audio files
+        shell: bash
+        run: |
+          git config user.name 'audio-bridge-bot'
+          git config user.email 'audio-bridge-bot@users.noreply.github.com'
+          git add audio-export
+          git diff --cached --quiet && exit 0
+          git commit -m 'Add temporary narration export'
+          git push
