@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
+
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+
+ROOT = Path.cwd()
+OUT = ROOT / "output_v6"
+WORK = ROOT / "work_v6"
+AUDIO_DIR = ROOT / "audio"
+ASSET_DIR = ROOT / "assets"
+OUT.mkdir(exist_ok=True)
+WORK.mkdir(exist_ok=True)
+
+W, H, FPS = 1080, 1920, 60
+CAP_LEFT, CAP_RIGHT = 96, 984
+CAP_MAX_WIDTH = CAP_RIGHT - CAP_LEFT
+CAP_TOP, CAP_BOTTOM = 1080, 1392
+PANEL_TOP, PANEL_BOTTOM = 1430, 1816
+
+FONT_HEAVY = Path("/usr/share/fonts/truetype/lato/Lato-Heavy.ttf")
+FONT_SEMIBOLD = Path("/usr/share/fonts/truetype/lato/Lato-Semibold.ttf")
+FONT_REGULAR = Path("/usr/share/fonts/truetype/lato/Lato-Regular.ttf")
+
+for font_path in (FONT_HEAVY, FONT_SEMIBOLD, FONT_REGULAR):
+    if not font_path.exists():
+        raise SystemExit(f"Required font missing: {font_path}")
+
+
+def run(cmd: list[str], *, capture: bool = False) -> str:
+    print("+", " ".join(str(c) for c in cmd), flush=True)
+    result = subprocess.run(cmd, check=True, text=True, capture_output=capture)
+    return result.stdout if capture else ""
+
+
+def probe_duration(path: Path) -> float:
+    return float(
+        run(
+            [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=nokey=1:noprint_wrappers=1", str(path),
+            ],
+            capture=True,
+        ).strip()
+    )
+
+
+def ass_time(seconds: float) -> str:
+    cs = max(0, int(round(seconds * 100)))
+    h, rem = divmod(cs, 360000)
+    m, rem = divmod(rem, 6000)
+    s, cs = divmod(rem, 100)
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def srt_time(seconds: float) -> str:
+    ms = max(0, int(round(seconds * 1000)))
+    h, rem = divmod(ms, 3600000)
+    m, rem = divmod(rem, 60000)
+    s, ms = divmod(rem, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+@dataclass(frozen=True)
+class Phrase:
+    index: int
+    text: str
+    caption: str
+    kind: str
+    rank: int | None = None
+    owner: str | None = None
+    model: str | None = None
+    registration: str | None = None
+    length: str | None = None
+    qualifier: str | None = None
+    interior: str | None = None
+
+
+PHRASES: list[Phrase] = [
+    Phrase(1, "Elon Musk has the newest jet here,", "ELON MUSK HAS THE\nNEWEST JET HERE,", "hook"),
+    Phrase(2, "but it is only number five.", "BUT IT IS ONLY\nNUMBER FIVE.", "hook"),
+    Phrase(3, "And wait until you see inside.", "AND WAIT UNTIL\nYOU SEE INSIDE.", "hook"),
+    Phrase(4, "We are ranking exterior length.", "WE ARE RANKING\nEXTERIOR LENGTH.", "method"),
+    Phrase(5, "The interiors are model examples, not the owners' verified cabins.", "INTERIORS ARE MODEL EXAMPLES —\nNOT VERIFIED OWNER CABINS.", "method"),
+    Phrase(6, "Number five: Musk's Gulfstream G800, N8628, 30.4 metres.", "#5 — MUSK'S GULFSTREAM G800\nN8628 · 30.4 METRES", "rank", rank=5, owner="ELON MUSK", model="GULFSTREAM G800", registration="N8628", length="30.4 m", qualifier="EXACT AIRCRAFT"),
+    Phrase(7, "The G800 can have up to four living areas.", "MODEL INTERIOR: UP TO\nFOUR LIVING AREAS.", "interior", rank=5, owner="ELON MUSK", model="GULFSTREAM G800", registration="N8628", length="30.4 m", qualifier="MODEL INTERIOR — REPRESENTATIVE", interior="g800_interior.jpg"),
+    Phrase(8, "Number four: Bezos's reported G700, N11AF, 33.5 metres.", "#4 — BEZOS'S REPORTED G700\nN11AF · 33.5 METRES", "rank", rank=4, owner="JEFF BEZOS — REPORTED", model="GULFSTREAM G700", registration="N11AF", length="33.5 m", qualifier="EXACT AIRCRAFT"),
+    Phrase(9, "Its cabin can have five living areas and a grand suite.", "MODEL INTERIOR: FIVE LIVING\nAREAS + GRAND SUITE.", "interior", rank=4, owner="JEFF BEZOS — REPORTED", model="GULFSTREAM G700", registration="N11AF", length="33.5 m", qualifier="MODEL INTERIOR — REPRESENTATIVE", interior="g700_interior.jpg"),
+    Phrase(10, "Number three: Ambani's BBJ 737 MAX 9, VT-AKV, 42.1 metres.", "#3 — AMBANI'S BBJ 737 MAX 9\nVT-AKV · 42.1 METRES", "rank", rank=3, owner="MUKESH AMBANI", model="BBJ 737 MAX 9", registration="VT-AKV", length="42.1 m", qualifier="EXACT AIRCRAFT"),
+    Phrase(11, "BBJ cabins can include lounges, private rooms, and staterooms.", "MODEL INTERIOR: LOUNGES,\nPRIVATE ROOMS + STATEROOMS.", "interior", rank=3, owner="MUKESH AMBANI", model="BBJ 737 MAX 9", registration="VT-AKV", length="42.1 m", qualifier="MODEL INTERIOR — REPRESENTATIVE", interior="bbj737_interior.jpg"),
+    Phrase(12, "Number two: the Abramovich-linked Boeing 787-8, P4-BDL, 56.7 metres.", "#2 — ABRAMOVICH-LINKED 787-8\nP4-BDL · 56.7 METRES", "rank", rank=2, owner="ROMAN ABRAMOVICH — LINKED", model="BOEING 787-8", registration="P4-BDL", length="56.7 m", qualifier="LINKED AIRCRAFT"),
+    Phrase(13, "A BBJ 787 can feel more like a flying residence.", "MODEL INTERIOR: MORE LIKE\nA FLYING RESIDENCE.", "interior", rank=2, owner="ROMAN ABRAMOVICH — LINKED", model="BOEING 787-8", registration="P4-BDL", length="56.7 m", qualifier="MODEL INTERIOR — REPRESENTATIVE", interior="bbj787_interior.jpg"),
+    Phrase(14, "Number one: the Usmanov-linked Airbus A340-300, M-IABU, 63.7 metres.", "#1 — USMANOV-LINKED A340-300\nM-IABU · 63.7 METRES", "rank", rank=1, owner="ALISHER USMANOV — LINKED", model="AIRBUS A340-300", registration="M-IABU", length="63.7 m", qualifier="LINKED AIRCRAFT"),
