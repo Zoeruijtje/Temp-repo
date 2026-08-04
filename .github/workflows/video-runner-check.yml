@@ -1,4 +1,4 @@
-name: Caption-Safe Private Jets Render
+name: Private Jets V6 Full Package
 
 on:
   pull_request:
@@ -7,34 +7,59 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Install FFmpeg and Pillow
+
+      - name: Install deterministic render dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg
+          sudo apt-get install -y -qq ffmpeg fonts-lato file
+          python -m pip install --upgrade pip
           python -m pip install pillow
-      - name: Restore renderer
+          ffmpeg -version | head -n 2
+          fc-match Lato
+
+      - name: Download the clean V5 visual master
+        uses: actions/download-artifact@v4
+        with:
+          name: billionaire-private-jets-v5-caption-safe-final
+          path: input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 30953165315
+
+      - name: Restore V6 renderer
         run: |
-          cat renderer/renderer.b64.part* | base64 -d | gunzip > render_caption_safe.py
-          python -m py_compile render_caption_safe.py
-      - name: Download and normalize sources
-        run: bash renderer/download_sources.sh
-      - name: Render and run caption-boundary QC
-        run: python render_caption_safe.py
-      - name: Upload corrected video package
+          base64 -d renderer/fix_v6.py.gz.b64 | gunzip > fix_v6.py
+          python -m py_compile fix_v6.py
+          sha256sum fix_v6.py
+
+      - name: Download phrase narration and official interior assets
+        run: bash renderer/download_v6_assets.sh
+
+      - name: Render V6 and enforce QC gates
+        run: python fix_v6.py
+
+      - name: Run independent media checks
+        run: |
+          FINAL='output_v6/billionaire-private-jets-v6-final-captioned-1080x1920-60fps.mp4'
+          test -s "$FINAL"
+          ffprobe -v error -show_entries format=duration,size -show_entries stream=index,codec_type,codec_name,width,height,r_frame_rate,sample_rate,channels -of json "$FINAL" | tee output_v6/ffprobe-final.json
+          ffmpeg -hide_banner -i "$FINAL" -vf "blackdetect=d=0.15:pix_th=0.98" -an -f null - 2> output_v6/black-frame-scan.log
+          ffmpeg -hide_banner -i "$FINAL" -af "silencedetect=noise=-48dB:d=0.65" -vn -f null - 2> output_v6/silence-scan.log
+          grep -q '"all_pass": true' output_v6/v6-qc-report.json
+
+      - name: Upload full YouTube package
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: billionaire-private-jets-v5-caption-safe-final
-          path: |
-            output/**
-            work/caption-qc/**
-          if-no-files-found: warn
+          name: billionaire-private-jets-v6-full-youtube-package
+          path: output_v6/**
+          if-no-files-found: error
           compression-level: 0
-          retention-days: 1
+          retention-days: 7
