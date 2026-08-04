@@ -1,0 +1,82 @@
+        f"drawtext=fontfile={FONT_BOLD}:text='{fact}':fontcolor=white:fontsize=38:x=(w-text_w)/2:y=1510,"
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Regular.ttf:text='Not the owner-specific cabin unless independently verified':fontcolor=0x9AA7B2:fontsize=21:x=(w-text_w)/2:y=1588,"
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Semibold.ttf:text='OFFICIAL MANUFACTURER / BBJ MODEL CONTEXT':fontcolor=0x33E6F1:fontsize=18:x=(w-text_w)/2:y=1795,"
+        "format=yuv420p"
+    )
+    run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-i", str(img),
+        "-filter_complex", vf, "-t", f"{target:.3f}", "-r", str(FPS), "-an", "-c:v", "libx264",
+        "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)
+    ])
+
+
+def create_privacy_clip(p: Phrase, out: Path, target: float) -> None:
+    assert p.src_start is not None and p.src_end is not None and p.interior_title and p.interior_fact
+    srcdur = p.src_end - p.src_start
+    title = esc_drawtext(p.interior_title)
+    fact = esc_drawtext(p.interior_fact)
+    vf = (
+        f"setpts=PTS*{target/srcdur:.10f},fps={FPS},scale={W}:{H}:flags=lanczos,"
+        "boxblur=12:3,eq=brightness=-0.30:saturation=0.6,"
+        "drawbox=x=72:y=420:w=936:h=720:color=0x071017@0.90:t=fill,"
+        "drawbox=x=72:y=420:w=936:h=6:color=0xB7FF4A@1:t=fill,"
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Bold.ttf:text='VERIFICATION CHECK':fontcolor=0xB7FF4A:fontsize=27:x=(w-text_w)/2:y=510,"
+        f"drawtext=fontfile={FONT_BOLD}:text='{title}':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=635,"
+        f"drawtext=fontfile={FONT_BOLD}:text='{fact}':fontcolor=white:fontsize=34:x=(w-text_w)/2:y=770,"
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Regular.ttf:text='We do not substitute another aircraft interior and imply it is exact.':fontcolor=0xB8C2CA:fontsize=24:x=(w-text_w)/2:y=875,"
+        "format=yuv420p"
+    )
+    run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{p.src_start:.3f}", "-t", f"{srcdur:.3f}",
+        "-i", str(BASE_VIDEO), "-an", "-vf", vf, "-t", f"{target:.3f}", "-r", str(FPS),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-pix_fmt", "yuv420p", str(out)
+    ])
+
+
+def render_video(durs: list[float], narration: Path, ass: Path) -> tuple[Path, Path]:
+    clips: list[Path] = []
+    for i, (p, dur) in enumerate(zip(PHRASES, durs), 1):
+        target = dur + (GAP if i < len(PHRASES) else 0.0)
+        out = WORK_DIR / f"visual_{i:02d}.mp4"
+        if p.kind == "interior":
+            create_interior_clip(p, out, target)
+        elif p.kind == "privacy":
+            create_privacy_clip(p, out, target)
+        else:
+            create_base_clip(p, out, target)
+        clips.append(out)
+
+    concat = WORK_DIR / "video_concat.txt"
+    concat.write_text("\n".join(f"file '{p.as_posix()}'" for p in clips) + "\n", encoding="utf-8")
+    clean = OUTPUT_DIR / "billionaire-private-jets-v6-clean-1080x1920-60fps.mp4"
+    run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(concat),
+        "-i", str(narration), "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+        "-shortest", "-movflags", "+faststart", str(clean)
+    ])
+    final = OUTPUT_DIR / "billionaire-private-jets-v6-final-captioned-1080x1920-60fps.mp4"
+    run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(clean),
+        "-vf", f"ass={ass.as_posix()}:fontsdir=/usr/share/fonts/truetype/lato", "-c:v", "libx264", "-preset", "medium",
+        "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", str(final)
+    ])
+    return clean, final
+
+
+def text_width(text: str, font: Path, size: int) -> int:
+    f = ImageFont.truetype(str(font), size)
+    box = f.getbbox(text)
+    return box[2] - box[0]
+
+
+def make_thumbnail(final: Path) -> Path:
+    frame = WORK_DIR / "thumb_frame.png"
+    run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "2.6", "-i", str(final), "-frames:v", "1", str(frame)])
+    im = Image.open(frame).convert("RGB").resize((1280, 720), Image.Resampling.LANCZOS)
+    draw = ImageDraw.Draw(im, "RGBA")
+    draw.rectangle((0, 0, 1280, 720), fill=(3, 8, 14, 90))
+    draw.rounded_rectangle((45, 45, 1235, 675), radius=28, outline=(51, 230, 241, 230), width=5, fill=(3, 8, 14, 90))
+    font1 = ImageFont.truetype(str(FONT_BOLD), 88)
+    font2 = ImageFont.truetype(str(FONT_BOLD), 104)
+    font3 = ImageFont.truetype(str(FONT_SEMIBOLD), 34)
+    draw.text((85, 82), "ELON'S NEW G800", font=font1, fill=(255, 255, 255, 255), stroke_width=4, stroke_fill=(0, 0, 0, 220))
