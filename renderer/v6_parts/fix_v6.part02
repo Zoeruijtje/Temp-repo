@@ -1,0 +1,74 @@
+    for i, (p, dur) in enumerate(zip(PHRASES, durs), 1):
+        start = t
+        end = t + dur
+        ass_text = p.caption.replace("\n", r"\N")
+        events.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Caption,,0,0,0,,{ass_text}")
+        srt_parts.append(f"{i}\n{srt_time(start)} --> {srt_time(end)}\n{p.caption}\n")
+        timing.append({"cue": i, "text": p.text, "start": round(start, 3), "end": round(end, 3), "duration": round(dur, 3), "sync_basis": f"audio/{p.idx:02d}.mp3"})
+        t = end + (GAP if i < len(PHRASES) else 0.0)
+    ass.write_text(ass_header + "\n".join(events) + "\n", encoding="utf-8")
+    srt.write_text("\n".join(srt_parts), encoding="utf-8")
+    return ass, srt, timing
+
+
+def rank_filters(p: Phrase) -> str:
+    assert p.owner and p.model and p.reg and p.length and p.rank
+    name = esc_drawtext(p.owner)
+    qual = esc_drawtext(p.qualifier or "")
+    model = esc_drawtext(f"{p.model} • {p.reg}")
+    length = esc_drawtext(p.length)
+    rank = f"#{p.rank:02d}"
+    bar_color = "0xB7FF4A" if p.rank == 1 else "0x33E6F1"
+    return ",".join([
+        "drawbox=x=0:y=1418:w=1080:h=502:color=0x060A0F@0.98:t=fill",
+        f"drawbox=x=0:y=1418:w=1080:h=5:color={bar_color}@1:t=fill",
+        "drawbox=x=54:y=1460:w=692:h=246:color=0x101821@0.96:t=fill",
+        "drawbox=x=770:y=1460:w=256:h=246:color=0x0C131A@1:t=fill",
+        f"drawtext=fontfile={FONT_BOLD}:text='{rank}':fontcolor=0x33E6F1:fontsize=30:x=72:y=1477",
+        f"drawtext=fontfile={FONT_BOLD}:text='{name}':fontcolor=white:fontsize=42:x=72:y=1528",
+        f"drawtext=fontfile={FONT_SEMIBOLD}:text='{model}':fontcolor=0x9BEAF0:fontsize=24:x=72:y=1590",
+        f"drawtext=fontfile={FONT_REGULAR}:text='{qual}':fontcolor=0xAAB5C0:fontsize=18:x=72:y=1632",
+        f"drawtext=fontfile={FONT_BOLD}:text='{length}':fontcolor=white:fontsize=78:x=790:y=1505",
+        f"drawtext=fontfile={FONT_BOLD}:text='m':fontcolor=0xAAB5C0:fontsize=27:x=978:y=1570",
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Bold.ttf:text='EXTERIOR LENGTH':fontcolor=0xAAB5C0:fontsize=18:x=800:y=1642",
+        "drawbox=x=70:y=1750:w=940:h=14:color=0x26333E@1:t=fill",
+        f"drawbox=x=70:y=1750:w={int(940 * float(p.length) / 63.7)}:h=14:color={bar_color}@1:t=fill",
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Regular.ttf:text='30 m':fontcolor=0x7E8993:fontsize=15:x=70:y=1782",
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Regular.ttf:text='63.7 m':fontcolor=0x7E8993:fontsize=15:x=954:y=1782",
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Semibold.ttf:text='RANKED BY LENGTH • SOURCE QUALIFIERS SHOWN':fontcolor=0x7E8993:fontsize=17:x=70:y=1842",
+    ])
+
+
+def create_base_clip(p: Phrase, out: Path, target: float) -> None:
+    assert p.src_start is not None and p.src_end is not None
+    srcdur = p.src_end - p.src_start
+    vf = f"setpts=PTS*{target/srcdur:.10f},fps={FPS},scale={W}:{H}:flags=lanczos,format=yuv420p"
+    if p.kind == "rank":
+        vf += "," + rank_filters(p)
+    run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{p.src_start:.3f}", "-t", f"{srcdur:.3f}",
+        "-i", str(BASE_VIDEO), "-an", "-vf", vf, "-t", f"{target:.3f}", "-r", str(FPS),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)
+    ])
+
+
+def create_interior_clip(p: Phrase, out: Path, target: float) -> None:
+    assert p.interior_image and p.interior_title and p.interior_fact
+    img = ASSET_DIR / p.interior_image
+    if not img.exists():
+        raise FileNotFoundError(img)
+    title = esc_drawtext(p.interior_title)
+    fact = esc_drawtext(p.interior_fact)
+    frames = max(1, int(math.ceil(target * FPS)))
+    vf = (
+        f"[0:v]split=2[bg][fg];"
+        f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=24:8,eq=brightness=-0.18:saturation=0.85[bg2];"
+        f"[fg]scale=980:1120:force_original_aspect_ratio=decrease,"
+        f"zoompan=z='min(zoom+0.00055,1.035)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:s=980x1120:fps={FPS}[fg2];"
+        f"[bg2][fg2]overlay=x=50:y=230:shortest=1,"
+        "drawbox=x=50:y=230:w=980:h=1120:color=white@0.20:t=3,"
+        "drawbox=x=0:y=0:w=1080:h=185:color=0x071017@0.96:t=fill,"
+        "drawbox=x=0:y=1418:w=1080:h=502:color=0x060A0F@0.98:t=fill,"
+        "drawbox=x=0:y=1418:w=1080:h=5:color=0x33E6F1@1:t=fill,"
+        "drawtext=fontfile=/usr/share/fonts/truetype/lato/Lato-Bold.ttf:text='MODEL INTERIOR • REPRESENTATIVE':fontcolor=0x33E6F1:fontsize=24:x=54:y=58,"
+        f"drawtext=fontfile={FONT_BOLD}:text='{title}':fontcolor=white:fontsize=52:x=54:y=101,"
