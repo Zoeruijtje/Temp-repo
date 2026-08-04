@@ -1,0 +1,1 @@
+Run the installed caption-safe renderer from the base branch.
