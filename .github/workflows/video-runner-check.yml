@@ -1,23 +1,65 @@
-name: Video Runner Check
+name: Caption-Safe Private Jets Render
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  check:
+  render:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          mkdir -p output
-          ffmpeg -version | head -n 2 > output/status.txt
-          echo runner-ok >> output/status.txt
-      - uses: actions/upload-artifact@v4
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+          ffmpeg -version | head -n 2
+      - name: Restore deterministic renderer
+        shell: bash
+        run: |
+          cat > /tmp/render.py.gz.b64 <<'B64'
+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
+B64
+          base64 -d /tmp/render.py.gz.b64 | gunzip > render_caption_safe.py
+          python -m py_compile render_caption_safe.py
+      - name: Download locked source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p media/raw
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130 Safari/537.36'
+          get() { curl -fL --retry 5 --retry-all-errors --connect-timeout 20 -A "$UA" "$1" -o "$2"; }
+          get 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/aa5c84cf-5b78-435e-850f-633499642f4b.mp3' media/narration1.mp3
+          get 'https://storage.googleapis.com/adm--audio-playback--7d--public/mcp-preview/27b44c63-f08a-42a7-b594-f02b13c8274d.mp3' media/narration2.mp3
+          get 'https://videos.pexels.com/video-files/34746862/14730107_2546_1440_30fps.mp4' media/raw/private_dusk.mp4
+          get 'https://videos.pexels.com/video-files/36330055/15408092_2160_3840_30fps.mp4' media/raw/airliner_vertical.mp4
+          get 'https://videos.pexels.com/video-files/13278455/13278455-uhd_3840_2160_30fps.mp4' media/raw/private_prague.mp4
+          get 'https://videos.pexels.com/video-files/14109774/14109774-uhd_3840_2160_60fps.mp4' media/raw/private_aerial.mp4
+          get 'https://videos.pexels.com/video-files/32538633/13876757_3840_2160_60fps.mp4' media/raw/widebody.mp4
+          get 'https://videos.pexels.com/video-files/34171733/14486284_1920_1080_30fps.mp4' media/raw/commercial.mp4
+          get 'https://cms.grndcntrl.net/uploads/large_N8628_4cdb390bc6.jpg' media/N8628.jpg
+          get 'https://cdn.jetphotos.com/full/6/2089568_1748776495.jpg' media/N11AF.jpg
+          get 'https://i.ytimg.com/vi/2GdTP26Cij8/maxresdefault.jpg' media/VT-AKV.jpg
+          get 'https://upload.wikimedia.org/wikipedia/commons/6/6c/Roman_Abramovich%27s_B787-8_Dreamliner_P4-BDL_%28Sideview%29.jpg' media/P4-BDL.jpg
+          get 'https://upload.wikimedia.org/wikipedia/commons/9/95/Airbus_A340-300_Bourkhan_Group_F-WWJM_-_MSN_955_-_Will_be_M-ABUS_-_Now_in_Global_Jet_Luxembourg_fleet_as_M-IABU_%282950340362%29.jpg' media/M-IABU.jpg
+          for src in media/raw/*.mp4; do
+            dst="media/$(basename "$src")"
+            ffmpeg -hide_banner -loglevel warning -y -i "$src" -vf "scale='if(gt(iw,ih),1920,-2)':'if(gt(iw,ih),-2,1920)',fps=30" -an -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart "$dst"
+          done
+          rm -rf media/raw
+          ls -lh media
+      - name: Render and run caption-boundary QC
+        run: python render_caption_safe.py
+      - name: Upload corrected video package
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: video-runner-check
-          path: output/
+          name: billionaire-private-jets-v5-caption-safe-final
+          path: |
+            output/**
+            work/caption-qc/**
+          if-no-files-found: warn
+          compression-level: 0
           retention-days: 1
