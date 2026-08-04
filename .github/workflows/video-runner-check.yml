@@ -35,7 +35,9 @@ jobs:
 
       - name: Restore and verify V6 renderer
         run: |
-          cat renderer/v6_parts/fix_v6.part* > fix_v6.py
+          cat renderer/v6_parts/fix_v6.part00 renderer/v6_parts/fix_v6.part01 renderer/v6_parts/fix_v6.part02 renderer/v6_parts/fix_v6.part03 renderer/v6_parts/fix_v6.part04 > fix_v6.py
+          base64 -d renderer/v6_parts/fix_v6.part05.b64 >> fix_v6.py
+          cat renderer/v6_parts/fix_v6.part06 >> fix_v6.py
           echo '702513eae7565fef99206a39281dcabbce2b64f6cfe27dd46b4f7dc086579ec7  fix_v6.py' | sha256sum -c -
           python -m py_compile fix_v6.py
 
