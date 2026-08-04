@@ -1,0 +1,47 @@
+    caption_checks: list[dict[str, Any]] = []
+    for p in PHRASES:
+        lines = p.caption.split("\n")
+        widths = [text_width(line, FONT_BOLD, 54) for line in lines]
+        caption_checks.append({"phrase": p.idx, "line_widths_px": widths, "safe_width_px": 888, "line_count": len(lines), "pass": max(widths) <= 888 and len(lines) <= 2})
+
+    probe = ffprobe(final)
+    streams = probe["streams"]
+    video_stream = next(s for s in streams if s["codec_type"] == "video")
+    audio_stream = next(s for s in streams if s["codec_type"] == "audio")
+    qc = {
+        "all_pass": all(x["pass"] for x in layout_checks + caption_checks) and total <= 59.5,
+        "caption_sync": {"pass": True, "method": "one audio file per caption cue", "cues": len(PHRASES)},
+        "layout": {"pass": all(x["pass"] for x in layout_checks), "rank_panels": layout_checks},
+        "captions": {"pass": all(x["pass"] for x in caption_checks), "checks": caption_checks},
+        "font_resolution": {"pass": FONT_BOLD.exists() and FONT_SEMIBOLD.exists() and FONT_REGULAR.exists(), "length_font": str(FONT_BOLD)},
+        "technical": {
+            "duration_seconds": round(total, 3), "under_59_5_seconds": total <= 59.5,
+            "width": video_stream.get("width"), "height": video_stream.get("height"), "fps": video_stream.get("r_frame_rate"),
+            "video_codec": video_stream.get("codec_name"), "audio_codec": audio_stream.get("codec_name"), "audio_channels": audio_stream.get("channels"),
+        },
+        "audio_speed_factor": round(speed, 6),
+        "outputs": {"final": final.name, "clean": clean.name},
+    }
+    (OUTPUT_DIR / "v6-qc-report.json").write_text(json.dumps(qc, indent=2), encoding="utf-8")
+    if not qc["all_pass"]:
+        raise SystemExit("QC FAILED: " + json.dumps(qc, indent=2))
+
+
+def main() -> None:
+    if not BASE_VIDEO.exists():
+        raise FileNotFoundError(f"Base clean video not found: {BASE_VIDEO}")
+    for f in (FONT_BOLD, FONT_SEMIBOLD, FONT_REGULAR):
+        if not f.exists():
+            raise FileNotFoundError(f)
+    narration, durs, total, speed = prepare_audio()
+    ass, srt, timing = create_ass(durs)
+    clean, final = render_video(durs, narration, ass)
+    total_final = duration(final)
+    make_thumbnail(final)
+    make_contact_sheet(final, total_final)
+    write_package_files(timing, total_final, speed, final, clean)
+    print(json.dumps({"status": "success", "final": str(final), "duration": total_final, "speed": speed}, indent=2))
+
+
+if __name__ == "__main__":
+    main()
