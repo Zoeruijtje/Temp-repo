@@ -1,0 +1,21 @@
+name: Video Runner Check
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p output
+          ffmpeg -version | head -n 2 > output/status.txt
+          echo runner-ok >> output/status.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: video-runner-check
+          path: output/
+          retention-days: 1
