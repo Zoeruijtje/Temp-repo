@@ -1,0 +1,48 @@
+    draw.text((85, 190), "IS ONLY #5", font=font2, fill=(51, 230, 241, 255), stroke_width=5, stroke_fill=(0, 0, 0, 240))
+    draw.rounded_rectangle((85, 555, 915, 630), radius=16, fill=(7, 16, 23, 230))
+    draw.text((112, 573), "THE BIGGEST JET IS 63.7 METRES", font=font3, fill=(183, 255, 74, 255))
+    out = OUTPUT_DIR / "thumbnail-1280x720.png"
+    im.save(out, optimize=True)
+    return out
+
+
+def make_contact_sheet(final: Path, total: float) -> Path:
+    times = [total * (i + 0.5) / 12 for i in range(12)]
+    frames: list[Image.Image] = []
+    review_dir = WORK_DIR / "review_frames"
+    review_dir.mkdir(exist_ok=True)
+    for i, t in enumerate(times, 1):
+        p = review_dir / f"frame_{i:02d}_{t:.2f}.jpg"
+        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{t:.3f}", "-i", str(final), "-frames:v", "1", "-q:v", "2", str(p)])
+        frames.append(Image.open(p).convert("RGB").resize((270, 480), Image.Resampling.LANCZOS))
+    sheet = Image.new("RGB", (1080, 1440), (8, 12, 18))
+    for i, im in enumerate(frames):
+        x = (i % 4) * 270
+        y = (i // 4) * 480
+        sheet.paste(im, (x, y))
+    out = OUTPUT_DIR / "review-contact-sheet.jpg"
+    sheet.save(out, quality=90)
+    return out
+
+
+def write_package_files(timing: list[dict[str, Any]], total: float, speed: float, final: Path, clean: Path) -> None:
+    metadata = {
+        "primary_title": "Elon Musk's New G800 Is Only the 5th-Longest Billionaire Jet",
+        "title_options": [
+            "Elon Musk's New Jet Is Only #5 😳",
+            "The Billionaire Jet Bigger Than Elon Musk's G800",
+            "Ranking Billionaire Private Jets by Length (With Interiors)",
+        ],
+        "description": "Elon Musk's new Gulfstream G800 is one of the most advanced purpose-built business jets in the world—but by exterior length, it is only #5 in this comparison. We rank five billionaire-linked aircraft and show representative manufacturer/model interiors where reliable public material exists. Interior images are model examples, not verified owner-specific cabins. Ownership links are described as reported/linked where public registration records do not disclose the beneficial owner.\n\nRanking:\n#5 Elon Musk-linked Gulfstream G800 (N8628) — 30.4 m\n#4 Jeff Bezos-reported Gulfstream G700 (N11AF) — 33.5 m\n#3 Mukesh Ambani-reported BBJ 737 MAX 9 (VT-AKV) — 42.1 m\n#2 Roman Abramovich-linked Boeing 787-8 (P4-BDL) — 56.7 m\n#1 Alisher Usmanov-linked Airbus A340-300 (M-IABU) — 63.7 m\n\nShould airliner-based VIP jets count against purpose-built business jets?",
+        "hashtags": ["#PrivateJet", "#Billionaires", "#ElonMusk", "#Aviation", "#Luxury"],
+        "tags": ["Elon Musk private jet", "Gulfstream G800", "Jeff Bezos G700", "Mukesh Ambani private jet", "Roman Abramovich Boeing 787", "Alisher Usmanov Airbus A340", "billionaire private jets", "private jet interiors", "luxury aviation", "business jets", "YouTube Shorts"],
+        "pinned_comment": "Should airliner-based VIP jets count in the same ranking as purpose-built business jets—or should Musk and Bezos move up?",
+        "duration_seconds": round(total, 3),
+        "resolution": "1080x1920",
+        "fps": 60,
+        "caption_sync_method": "Each caption cue is bounded by its own individually generated narration file; no proportional timing estimates.",
+    }
+    (OUTPUT_DIR / "youtube-upload-metadata.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+    (OUTPUT_DIR / "youtube-upload-metadata.txt").write_text(
+        f"TITLE\n{metadata['primary_title']}\n\nDESCRIPTION\n{metadata['description']}\n\nHASHTAGS\n{' '.join(metadata['hashtags'])}\n\nTAGS\n{', '.join(metadata['tags'])}\n\nPINNED COMMENT\n{metadata['pinned_comment']}\n",
+        encoding="utf-8")
