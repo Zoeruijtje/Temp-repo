@@ -1,0 +1,1 @@
+Run the caption-safe renderer after the five manual line-break corrections passed local QC.
