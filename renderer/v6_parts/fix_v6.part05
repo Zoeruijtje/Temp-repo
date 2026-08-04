@@ -1,0 +1,66 @@
+    sources = """# Sources and disclosure
+
+## Aircraft model lengths
+- Gulfstream G800 official specifications: 30.40 m exterior length.
+- Gulfstream G700 official specifications: 33.48 m exterior length, rounded to 33.5 m.
+- Boeing 737 MAX 9 official specifications: 42.1 m.
+- Boeing 787-8 official specifications: 56.7 m.
+- Airbus A340-300 aircraft characteristics: approximately 63.69 m, rounded to 63.7 m.
+
+## Aircraft links / registrations
+- N8628: FAA registry confirms a 2026 Gulfstream G800; the Musk association is based on public tracking and independent reporting by Ground Control / Jack Sweeney.
+- N11AF: FAA registry confirms a Gulfstream G700 but suppresses beneficial-owner data; the Bezos association is therefore described as reported.
+- VT-AKV: public aircraft photography/databases identify it as a private BBJ 737 MAX 9 and report the Ambani association.
+- P4-BDL: the U.S. Department of Commerce identified the Boeing 787-8 as Roman Abramovich's aircraft in its 2022 charging letter.
+- M-IABU: the U.S. Treasury and OCCRP connect the Airbus A340-300 to Alisher Usmanov.
+
+## Interior media
+- G800 and G700: official Gulfstream model cabin images.
+- BBJ 737 MAX and BBJ 787: Boeing Business Jets model/cabin imagery.
+- All are explicitly labelled representative model interiors. They are not presented as the owners' exact custom cabins.
+- No unverified M-IABU cabin image is substituted; the video states that its private interior is not publicly verified.
+
+## Publication note
+Manufacturer and third-party imagery remains the property of its respective rightsholder. Confirm the channel's fair-use/licensing policy before monetised publication or replace with separately licensed footage.
+"""
+    (OUTPUT_DIR / "sources-and-disclosure.md").write_text(sources, encoding="utf-8")
+    lessons = """# Production lessons and reusable QC gates
+
+## Issues found in V5
+1. Captions were timed by proportional word-count estimates rather than the actual spoken waveform. They could remain on-screen during pauses or change before the matching words were spoken.
+2. Caption overflow QC checked only canvas boundaries. It did not test semantic/audio synchronisation.
+3. The owner/name field and length field shared horizontal space, so long owner labels collided with the number.
+4. The length number used an uncontrolled font fallback, producing inconsistent glyph width and poor readability.
+5. Review contact sheets sampled broad moments but did not force samples at every ranked hero frame and caption transition.
+6. Interior footage was absent, reducing the luxury payoff viewers expected.
+
+## Fixes applied in V6
+1. Every caption phrase has its own narration audio file. Cue start/end times are derived directly from that file's duration.
+2. Audio-sync QC, layout QC, typography QC, technical QC and factual/source QC are separate gates.
+3. The owner/model column and length block are fixed, non-overlapping regions. Text width is measured before rendering.
+4. Lato Heavy is explicitly installed and used for length figures; Lato Semibold/Regular are explicitly used for labels. No font fallback is allowed.
+5. Representative official model interiors are inserted and clearly labelled; unverifiable owner-specific interiors are not implied.
+6. Final review includes phrase-midpoint frames, every ranked hero frame, contact sheet, black-frame scan, audio stream check, duration, resolution and frame-rate checks.
+
+## Mandatory gate for every future video
+- Do not mark complete until: caption/audio boundary test passes; all hero-frame text regions pass measured overlap checks; font files resolve explicitly; every source/qualifier is documented; representative/exact footage labels are correct; full render is visually sampled at all scene and caption boundaries.
+"""
+    (OUTPUT_DIR / "PRODUCTION_LESSONS_AND_QC.md").write_text(lessons, encoding="utf-8")
+    (OUTPUT_DIR / "caption-timing-audit.json").write_text(json.dumps(timing, indent=2), encoding="utf-8")
+
+    layout_checks: list[dict[str, Any]] = []
+    for p in PHRASES:
+        if p.kind == "rank":
+            owner_width = text_width(p.owner or "", FONT_BOLD, 42)
+            model_width = text_width(f"{p.model} • {p.reg}", FONT_SEMIBOLD, 24)
+            length_width = text_width(p.length or "", FONT_BOLD, 78)
+            layout_checks.append({
+                "phrase": p.idx,
+                "owner_width_px": owner_width,
+                "owner_region_px": 650,
+                "model_width_px": model_width,
+                "model_region_px": 650,
+                "length_width_px": length_width,
+                "length_region_px": 178,
+                "pass": owner_width <= 650 and model_width <= 650 and length_width <= 178,
+            })

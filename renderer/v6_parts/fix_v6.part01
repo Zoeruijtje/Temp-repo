@@ -1,0 +1,116 @@
+    Phrase(17, "But should airliner-based VIP jets count against purpose-built business jets?", "Should airliner-based VIP jets count\nagainst purpose-built business jets?", "base", 47.882, 52.20),
+    Phrase(18, "Comment your rule.", "Comment your rule.", "base", 52.20, 53.74),
+]
+
+
+def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+    print("+", " ".join(shlex.quote(x) for x in cmd), flush=True)
+    return subprocess.run(cmd, check=check, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+
+def ffprobe(path: Path) -> dict[str, Any]:
+    out = run([
+        "ffprobe", "-v", "error", "-show_entries",
+        "format=duration:stream=index,codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels",
+        "-of", "json", str(path)
+    ]).stdout
+    return json.loads(out)
+
+
+def duration(path: Path) -> float:
+    return float(ffprobe(path)["format"]["duration"])
+
+
+def esc_drawtext(s: str) -> str:
+    return (s.replace("\\", r"\\")
+             .replace(":", r"\:")
+             .replace("'", r"\'")
+             .replace("%", r"\%")
+             .replace(",", r"\,"))
+
+
+def prepare_audio() -> tuple[Path, list[float], float, float]:
+    trimmed: list[Path] = []
+    raw_durs: list[float] = []
+    for p in PHRASES:
+        src = AUDIO_DIR / f"{p.idx:02d}.mp3"
+        if not src.exists():
+            raise FileNotFoundError(src)
+        dst = WORK_DIR / f"audio_trim_{p.idx:02d}.wav"
+        run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+            "-af", "silenceremove=start_periods=1:start_duration=0.04:start_threshold=-46dB,areverse,silenceremove=start_periods=1:start_duration=0.08:start_threshold=-46dB,areverse",
+            "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", str(dst)
+        ])
+        trimmed.append(dst)
+        raw_durs.append(duration(dst))
+
+    raw_total = sum(raw_durs) + GAP * (len(PHRASES) - 1)
+    speed = max(1.0, raw_total / TARGET_MAX)
+    final_audio_parts: list[Path] = []
+    final_durs: list[float] = []
+    for p, src in zip(PHRASES, trimmed):
+        dst = WORK_DIR / f"audio_final_{p.idx:02d}.wav"
+        if speed > 1.0005:
+            run([
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+                "-af", f"atempo={speed:.8f}", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", str(dst)
+            ])
+        else:
+            dst.write_bytes(src.read_bytes())
+        final_audio_parts.append(dst)
+        final_durs.append(duration(dst))
+
+    silence = WORK_DIR / "gap.wav"
+    run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+        f"anullsrc=r=48000:cl=stereo", "-t", f"{GAP:.3f}", "-c:a", "pcm_s16le", str(silence)
+    ])
+    concat_file = WORK_DIR / "audio_concat.txt"
+    lines: list[str] = []
+    for i, part in enumerate(final_audio_parts):
+        lines.append(f"file '{part.as_posix()}'")
+        if i < len(final_audio_parts) - 1:
+            lines.append(f"file '{silence.as_posix()}'")
+    concat_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    narration = WORK_DIR / "narration_v6.wav"
+    run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0",
+        "-i", str(concat_file), "-c:a", "pcm_s16le", str(narration)
+    ])
+    return narration, final_durs, duration(narration), speed
+
+
+def create_ass(durs: list[float]) -> tuple[Path, Path, list[dict[str, Any]]]:
+    ass = OUTPUT_DIR / "billionaire-private-jets-v6-synced.ass"
+    srt = OUTPUT_DIR / "billionaire-private-jets-v6-synced.srt"
+    ass_header = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+WrapStyle: 2
+YCbCr Matrix: TV.709
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Caption,Lato Heavy,54,&H00FFFFFF,&H0000E5FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,7,2,2,96,96,535,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    def ass_time(t: float) -> str:
+        h = int(t // 3600); t -= h * 3600
+        m = int(t // 60); t -= m * 60
+        s = int(t); cs = int(round((t - s) * 100))
+        if cs == 100: s += 1; cs = 0
+        return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+    def srt_time(t: float) -> str:
+        ms = int(round(t * 1000))
+        h, rem = divmod(ms, 3600000); m, rem = divmod(rem, 60000); s, ms = divmod(rem, 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    t = 0.0
+    events: list[str] = []
+    srt_parts: list[str] = []
+    timing: list[dict[str, Any]] = []

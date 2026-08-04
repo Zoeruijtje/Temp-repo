@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import json
+import math
+import os
+import shlex
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from PIL import Image, ImageDraw, ImageFont
+
+ROOT = Path(__file__).resolve().parent
+INPUT_DIR = ROOT / "input"
+AUDIO_DIR = ROOT / "audio"
+ASSET_DIR = ROOT / "assets"
+WORK_DIR = ROOT / "work_v6"
+OUTPUT_DIR = ROOT / "output_v6"
+for d in (WORK_DIR, OUTPUT_DIR):
+    d.mkdir(parents=True, exist_ok=True)
+
+BASE_VIDEO = INPUT_DIR / "output" / "billionaire-private-jets-v5-caption-safe-clean.mp4"
+if not BASE_VIDEO.exists():
+    alt = INPUT_DIR / "billionaire-private-jets-v5-caption-safe-clean.mp4"
+    if alt.exists():
+        BASE_VIDEO = alt
+
+FPS = 60
+W, H = 1080, 1920
+GAP = 0.10
+TARGET_MAX = 58.80
+FONT_BOLD = Path("/usr/share/fonts/truetype/lato/Lato-Heavy.ttf")
+FONT_SEMIBOLD = Path("/usr/share/fonts/truetype/lato/Lato-Semibold.ttf")
+FONT_REGULAR = Path("/usr/share/fonts/truetype/lato/Lato-Regular.ttf")
+
+
+@dataclass
+class Phrase:
+    idx: int
+    text: str
+    caption: str
+    kind: str
+    src_start: float | None = None
+    src_end: float | None = None
+    rank: int | None = None
+    owner: str | None = None
+    qualifier: str | None = None
+    model: str | None = None
+    reg: str | None = None
+    length: str | None = None
+    interior_image: str | None = None
+    interior_title: str | None = None
+    interior_fact: str | None = None
+
+
+PHRASES: list[Phrase] = [
+    Phrase(1, "Elon Musk has the newest jet here,", "Elon Musk has the newest jet here,", "base", 0.0, 2.60),
+    Phrase(2, "but it is only number five.", "but it is only number five.", "base", 2.60, 5.00),
+    Phrase(3, "And wait until you see inside.", "And wait until you see inside.", "base", 5.00, 7.796),
+    Phrase(4, "We are ranking exterior length.", "We are ranking exterior length.", "base", 7.796, 11.80),
+    Phrase(5, "The interiors are model examples, not the owners' verified cabins.", "The interiors are model examples,\nnot the owners' verified cabins.", "base", 11.80, 16.938),
+    Phrase(6, "Number five: Musk's Gulfstream G800, N8628, 30.4 metres.", "Number five: Musk's Gulfstream\nG800, N8628 — 30.4 metres.", "rank", 16.938, 20.806, 5, "ELON MUSK", "REPORTED / TRACKED AIRCRAFT", "GULFSTREAM G800", "N8628", "30.4", None, None, None),
+    Phrase(7, "The G800 can have up to four living areas.", "The G800 can have\nup to four living areas.", "interior", interior_image="g800_interior.jpg", interior_title="GULFSTREAM G800", interior_fact="UP TO 4 LIVING AREAS"),
+    Phrase(8, "Number four: Bezos's reported G700, N11AF, 33.5 metres.", "Number four: Bezos's reported\nG700, N11AF — 33.5 metres.", "rank", 20.806, 25.026, 4, "JEFF BEZOS", "REPORTED ASSOCIATION", "GULFSTREAM G700", "N11AF", "33.5", None, None, None),
+    Phrase(9, "Its cabin can have five living areas and a grand suite.", "Its cabin can have five living areas\nand a grand suite.", "interior", interior_image="g700_interior.jpg", interior_title="GULFSTREAM G700", interior_fact="5 LIVING AREAS • GRAND SUITE OPTION"),
+    Phrase(10, "Number three: Ambani's BBJ 737 MAX 9, VT-AKV, 42.1 metres.", "Number three: Ambani's BBJ 737\nMAX 9, VT-AKV — 42.1 metres.", "rank", 25.026, 30.652, 3, "MUKESH AMBANI", "REPORTED ASSOCIATION", "BBJ 737 MAX 9", "VT-AKV", "42.1", None, None, None),
+    Phrase(11, "BBJ cabins can include lounges, private rooms, and staterooms.", "BBJ cabins can include lounges,\nprivate rooms and staterooms.", "interior", interior_image="bbj737_interior.jpg", interior_title="BBJ 737 MAX", interior_fact="LOUNGES • PRIVATE ROOMS • STATEROOMS"),
+    Phrase(12, "Number two: the Abramovich-linked Boeing 787-8, P4-BDL, 56.7 metres.", "Number two: Abramovich-linked\nBoeing 787-8, P4-BDL — 56.7 m", "rank", 30.652, 36.278, 2, "ROMAN ABRAMOVICH", "LINKED BY U.S. COMMERCE", "BOEING 787-8", "P4-BDL", "56.7", None, None, None),
+    Phrase(13, "A BBJ 787 can feel more like a flying residence.", "A BBJ 787 can feel more like\na flying residence.", "interior", interior_image="bbj787_interior.jpg", interior_title="BBJ 787", interior_fact="WIDEBODY VIP CABIN • REPRESENTATIVE"),
+    Phrase(14, "Number one: the Usmanov-linked Airbus A340-300, M-IABU, 63.7 metres.", "Number one: Usmanov-linked\nA340-300, M-IABU — 63.7 m", "rank", 36.278, 41.201, 1, "ALISHER USMANOV", "LINKED BY U.S. TREASURY", "AIRBUS A340-300", "M-IABU", "63.7", None, None, None),
+    Phrase(15, "Its private interior is not publicly verified.", "Its private interior\nis not publicly verified.", "privacy", 39.0, 41.201, interior_title="M-IABU PRIVATE CABIN", interior_fact="NO VERIFIED PUBLIC INTERIOR SOURCE"),
+    Phrase(16, "That is more than twice the length of Musk's G800.", "That is more than twice\nthe length of Musk's G800.", "base", 41.201, 47.882),
