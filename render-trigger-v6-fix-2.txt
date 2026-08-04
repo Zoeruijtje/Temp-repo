@@ -1,0 +1,1 @@
+Rerun V6 after preserving internal narration pauses and manually re-breaking all long caption cues.
