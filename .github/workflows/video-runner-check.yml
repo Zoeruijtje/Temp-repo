@@ -33,9 +33,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: 30953165315
 
-      - name: Restore V6 renderer
+      - name: Restore V6 renderer from pinned main payload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          base64 -d renderer/fix_v6.py.gz.b64 | gunzip > fix_v6.py
+          curl -fL --retry 4 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.raw+json" \
+            'https://api.github.com/repos/Zoeruijtje/Temp-repo/contents/renderer/fix_v6.py.gz.b64?ref=main' \
+            | base64 -d | gunzip > fix_v6.py
           python -m py_compile fix_v6.py
           sha256sum fix_v6.py
 
