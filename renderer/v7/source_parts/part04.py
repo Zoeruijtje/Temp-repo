@@ -1,12 +1,17 @@
 
-def scene_video_source(name,src_start,target,overlay,crop='885:500:20:395'):
-    # overlay argument retained for call compatibility; base is already composited.
+def scene_image_source(name,target):
     key={'01_intro.mp4':'intro','02_method.mp4':'method','08_comparison.mp4':'comparison','09_outro.mp4':'outro'}[name]
     y={'intro':520,'method':420,'comparison':430,'outro':430}[key]
-    base=WORK/f'base_{key}.png'; out=SCENES/name
-    vf=(f"[0:v]crop={crop},scale=1000:960:force_original_aspect_ratio=increase,crop=1000:960,setpts=PTS-STARTPTS[fg];"
-        f"[1:v][fg]overlay=40:{y}:eof_action=repeat:shortest=0,fps=60,format=yuv420p[v]")
-    run(['ffmpeg','-hide_banner','-loglevel','error','-y','-ss',f'{src_start:.3f}','-i',str(SRC_V5),'-loop','1','-framerate','60','-i',str(base),'-filter_complex',vf,'-map','[v]','-t',f'{target:.3f}','-an','-r','60','-c:v','libx264','-preset','ultrafast','-crf','18','-pix_fmt','yuv420p',str(out)])
+    h={'intro':770,'method':870,'comparison':860,'outro':860}[key]
+    base=WORK/f'base_{key}.png'; out=SCENES/name; src=hook_sources[key]
+    motion=(f"scale=1100:{h+90}:force_original_aspect_ratio=increase,crop=1100:{h+90},"
+            f"zoompan=z='min(zoom+0.00008,1.03)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=1000x{h}:fps=60")
+    vf=(f"[0:v]{motion}[fg];[1:v][fg]overlay=40:{y}:eof_action=repeat:shortest=0,"
+        f"fps=60,format=yuv420p[v]")
+    run(['ffmpeg','-hide_banner','-loglevel','error','-y','-loop','1','-framerate','60','-i',str(src),
+         '-loop','1','-framerate','60','-i',str(base),'-filter_complex',vf,'-map','[v]',
+         '-t',f'{target:.3f}','-an','-r','60','-c:v','libx264','-preset','ultrafast','-crf','18',
+         '-pix_fmt','yuv420p',str(out)])
     return out
 
 def rank_scene(r,target):
@@ -30,21 +35,22 @@ def rank_scene(r,target):
 bounds=[0.0,map_exact(7.796),map_exact(16.938),map_exact(20.806),map_exact(25.026),map_exact(30.652),map_exact(36.278),map_exact(41.201),map_exact(47.882),TOTAL]
 spans=[bounds[i+1]-bounds[i] for i in range(len(bounds)-1)]
 scene_files=[]
-scene_files.append(scene_video_source('01_intro.mp4',0.0,spans[0]+TRANS,OVERLAYS/'intro.png','885:500:20:395'))
-scene_files.append(scene_video_source('02_method.mp4',8.0,spans[1]+TRANS,OVERLAYS/'method.png','885:500:20:395'))
+scene_files.append(scene_image_source('01_intro.mp4',spans[0]+TRANS))
+scene_files.append(scene_image_source('02_method.mp4',spans[1]+TRANS))
 for idx,r in enumerate(RANKS):
     scene_files.append(rank_scene(r,spans[2+idx]+TRANS))
-scene_files.append(scene_video_source('08_comparison.mp4',41.0,spans[7]+TRANS,OVERLAYS/'comparison.png','885:500:20:395'))
-scene_files.append(scene_video_source('09_outro.mp4',47.5,spans[8],OVERLAYS/'outro.png','885:500:20:395'))
+scene_files.append(scene_image_source('08_comparison.mp4',spans[7]+TRANS))
+scene_files.append(scene_image_source('09_outro.mp4',spans[8]))
 
-# Chain crossfades. Offsets are cumulative target spans.
+# Chain opaque wipes. Unlike transparent dissolves, these never ghost two owner or
+# length labels over the same pixels during a scene transition.
 inputs=[]
 for s in scene_files: inputs += ['-i',str(s)]
 filters=[]
 prev='0:v'; cumulative=spans[0]
 for i in range(1,len(scene_files)):
     outlabel=f'x{i}'
-    filters.append(f"[{prev}][{i}:v]xfade=transition=fade:duration={TRANS}:offset={cumulative:.6f}[{outlabel}]")
+    filters.append(f"[{prev}][{i}:v]xfade=transition=wipeleft:duration={TRANS}:offset={cumulative:.6f}[{outlabel}]")
     prev=outlabel
     cumulative += spans[i]
 visual=WORK/'visual_v7.mp4'
