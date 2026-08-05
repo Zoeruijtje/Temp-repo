@@ -57,7 +57,7 @@ def rank_overlay(r):
     d.text((owner_x,1433),f"{r['model']}  ·  {r['reg']}",font=fit_font(f"{r['model']}  ·  {r['reg']}",FONT_SEMI,22,650,16),fill=ACCENT)
     d.text((owner_x,1473),r['qualifier'],font=font(FONT_MED,16),fill=(244,247,248,160))
     glass(d,(770,1328,1016,1515),18,(7,16,20,215),(255,255,255,28),1)
-    lf=font(FONT_XB,92); val=f"{r['length']:.1f}"; d.text((996,1362),val,font=lf,fill=INK,anchor='ra')
+    val=f"{r['length']:.1f}"; lf=fit_font(val,FONT_XB,89,210,72); d.text((996,1362),val,font=lf,fill=INK,anchor='ra')
     d.text((1000,1435),'m',font=font(FONT_SEMI,31),fill=(244,247,248,180),anchor='ra')
     d.text((996,1486),'EXTERIOR LENGTH',font=font(FONT_SEMI,14),fill=(244,247,248,150),anchor='ra')
     # measure glass
