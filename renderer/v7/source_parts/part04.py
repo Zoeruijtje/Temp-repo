@@ -15,7 +15,7 @@ def rank_scene(r,target):
     motion="scale=1100:1023:force_original_aspect_ratio=increase,crop=1100:1023,zoompan=z='min(zoom+0.00010,1.035)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=1000x930:fps=60"
     if r['interior']:
         change=max(2.45,target-1.75); badge=OVERLAYS/f"rank{r['rank']}_interior_badge.png"
-        fc=(f"[0:v]{motion}[ext];[1:v]{motion}[int];[ext][int]xfade=transition=fade:duration=.5:offset={change}[card];"
+        fc=(f"[0:v]{motion}[ext];[1:v]{motion}[int];[ext][int]xfade=transition=fade:duration=0.5:offset={change}[card];"
             f"[2:v][card]overlay=40:310:eof_action=repeat:shortest=0[base];[base][3:v]overlay=0:0:enable='gte(t,{change})',fps=60,format=yuv420p[v]")
         args=['-loop','1','-framerate','60','-i',str(ext),'-loop','1','-framerate','60','-i',str(ASSETS/r['interior']),'-loop','1','-framerate','60','-i',str(base),'-loop','1','-framerate','60','-i',str(badge)]
     else:
