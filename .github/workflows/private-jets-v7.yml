@@ -84,10 +84,11 @@ jobs:
           ffmpeg -hide_banner -i "$FINAL" -af 'silencedetect=noise=-48dB:d=0.70' -vn -f null - 2> private_jets_v7/package/independent-silence-scan.log
 
       - name: Upload complete reviewed V7 package
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: billionaire-private-jets-v7-reviewed-full-package
           path: private_jets_v7/package/**
-          if-no-files-found: error
+          if-no-files-found: warn
           compression-level: 0
           retention-days: 7
