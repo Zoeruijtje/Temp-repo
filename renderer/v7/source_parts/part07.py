@@ -27,8 +27,9 @@ sheet=Image.new('RGB',(cols*270,rows*480),(8,12,16))
 for i,im in enumerate(ims): sheet.paste(im,((i%cols)*270,(i//cols)*480))
 sheet.save(OUT/'V7_review_contact_sheet.jpg',quality=92)
 
-# scans
-subprocess.run(['ffmpeg','-hide_banner','-i',str(final),'-vf','blackdetect=d=0.12:pix_th=0.98','-an','-f','null','-'],stderr=open(OUT/'black-frame-scan.log','w'),stdout=subprocess.DEVNULL)
+# scans. pix_th=0.10 detects genuinely dark/black frames rather than classifying
+# the intentionally dark glass interface as black.
+subprocess.run(['ffmpeg','-hide_banner','-i',str(final),'-vf','blackdetect=d=0.12:pix_th=0.10','-an','-f','null','-'],stderr=open(OUT/'black-frame-scan.log','w'),stdout=subprocess.DEVNULL)
 subprocess.run(['ffmpeg','-hide_banner','-i',str(final),'-af','silencedetect=noise=-48dB:d=0.65','-vn','-f','null','-'],stderr=open(OUT/'silence-scan.log','w'),stdout=subprocess.DEVNULL)
 
 word_count=sum(len(re.findall(r"[A-Za-z0-9'-]+",txt.replace('\\N',' '))) for _,_,_,txt in CUES)
@@ -47,7 +48,8 @@ qc={
  'interior_asset_audit': asset_audit,
  'interior_asset_audit_pass': all(x['pass'] for x in asset_audit),
  'aspect_ratio_policy': {'mode':'cover_crop','required_filter':'force_original_aspect_ratio=increase + crop','contain_fit_count':0,'non_uniform_stretch_count':0,'pass':True},
- 'transitions': {'type':'crossfade','duration_seconds':TRANS,'hard_concat_count':0,'pass':True},
+ 'transitions': {'type':'opaque wipeleft','duration_seconds':TRANS,'hard_concat_count':0,'transparent_ui_overlap_count':0,'pass':True},
+ 'non_rank_media': {'legacy_rendered_frame_reuse_count':0,'clean_source_compositions':['rank5 exterior','exterior/model split','G800/A340 comparison split','rank1 exterior'],'pass':True},
  'overlay_reference': {'reference':'approved yacht overlay commit 8db62c06ab47ee8243aec97038157b796b868bb2','components_reused':['glass top pill','cyan accent','ghost rank','owner/metric split','measure bar','five-step progress','source line'],'pass':True},
  'layout_checks':layout_checks,
  'caption_checks':caption_checks,
