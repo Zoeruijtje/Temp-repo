@@ -45,14 +45,24 @@ def dark_blur(im):
     im=ImageEnhance.Color(im).enhance(.78)
     return im.convert('RGBA')
 
-def get_v5_frame(t,name):
-    path=WORK/name
-    run(['ffmpeg','-hide_banner','-loglevel','error','-y','-ss',f'{t:.3f}','-i',str(SRC_V5),'-frames:v','1',str(path)])
-    return Image.open(path).convert('RGB').crop((20,395,905,895))
-
 def compose_base(src_img,transparent_overlay,out):
     bg=dark_blur(src_img); ov=Image.open(transparent_overlay).convert('RGBA')
     Image.alpha_composite(bg,ov).save(out)
+
+def labelled_pair(left_path,right_path,out,left_label,right_label,size=(1000,860)):
+    half=size[0]//2
+    canvas=Image.new('RGB',size,(5,10,14))
+    canvas.paste(cover(Image.open(left_path),(half,size[1])),(0,0))
+    canvas.paste(cover(Image.open(right_path),(size[0]-half,size[1])),(half,0))
+    d=ImageDraw.Draw(canvas,'RGBA')
+    d.rectangle((half-2,0,half+2,size[1]),fill=(98,232,255,180))
+    label_font=font(FONT_SEMI,18)
+    for x,label in [(20,left_label),(half+20,right_label)]:
+        box=d.textbbox((0,0),label,font=label_font)
+        tw=box[2]-box[0]
+        d.rounded_rectangle((x,20,x+tw+30,62),20,fill=(7,16,20,210),outline=(255,255,255,45),width=1)
+        d.text((x+15,41),label,font=label_font,fill=INK,anchor='lm')
+    canvas.save(out,quality=96)
 
 # Hard asset gate: reject HTML, placeholders, low-detail cards, or undersized media.
 from PIL import ImageStat
@@ -67,7 +77,17 @@ for r in RANKS:
     asset_audit.append({'file':p.name,'width':im.width,'height':im.height,'unique_colors_128':unique,'mean_variance':variance,'pass':passed})
     if not passed: raise RuntimeError(f'Interior source failed real-image/detail gate: {asset_audit[-1]}')
 
-for name,t,ov in [('intro',0.8,'intro.png'),('method',10.0,'method.png'),('comparison',43.0,'comparison.png'),('outro',50.0,'outro.png')]:
-    compose_base(get_v5_frame(t,f'frame_{name}.png'),OVERLAYS/ov,WORK/f'base_{name}.png')
+# Clean media for non-rank scenes. Never reuse a rendered V5 frame, because it can
+# contain previous headlines or captions inside the crop.
+labelled_pair(ASSETS/'rank5_exterior.jpg',ASSETS/'g800_interior.jpg',ASSETS/'method_pair.jpg','ACTUAL AIRCRAFT','MODEL INTERIOR')
+labelled_pair(ASSETS/'rank5_exterior.jpg',ASSETS/'rank1_exterior.jpg',ASSETS/'comparison_pair.jpg','G800 · 30.4 M','A340 · 63.7 M')
+hook_sources={
+    'intro': ASSETS/'rank5_exterior.jpg',
+    'method': ASSETS/'method_pair.jpg',
+    'comparison': ASSETS/'comparison_pair.jpg',
+    'outro': ASSETS/'rank1_exterior.jpg',
+}
+for name,ov in [('intro','intro.png'),('method','method.png'),('comparison','comparison.png'),('outro','outro.png')]:
+    compose_base(Image.open(hook_sources[name]),OVERLAYS/ov,WORK/f'base_{name}.png')
 for r in RANKS:
     compose_base(Image.open(ASSETS/f"rank{r['rank']}_exterior.jpg"),OVERLAYS/f"rank{r['rank']}.png",WORK/f"base_rank{r['rank']}.png")
