@@ -78,9 +78,11 @@ jobs:
           assert q['aspect_ratio_policy']['contain_fit_count'] == 0
           assert q['aspect_ratio_policy']['non_uniform_stretch_count'] == 0
           assert q['interior_asset_audit_pass'] is True
+          assert q['transitions']['transparent_ui_overlap_count'] == 0
+          assert q['non_rank_media']['legacy_rendered_frame_reuse_count'] == 0
           assert q['review_frame_count'] >= 25
           PY
-          ffmpeg -hide_banner -i "$FINAL" -vf 'blackdetect=d=0.12:pix_th=0.98' -an -f null - 2> private_jets_v7/package/independent-black-frame-scan.log
+          ffmpeg -hide_banner -i "$FINAL" -vf 'blackdetect=d=0.12:pix_th=0.10' -an -f null - 2> private_jets_v7/package/independent-black-frame-scan.log
           ffmpeg -hide_banner -i "$FINAL" -af 'silencedetect=noise=-48dB:d=0.70' -vn -f null - 2> private_jets_v7/package/independent-silence-scan.log
 
       - name: Upload complete reviewed V7 package
