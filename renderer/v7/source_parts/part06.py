@@ -11,4 +11,5 @@ layout_checks=[]
 for r in RANKS:
     dummy=Image.new('RGB',(W,H)); dd=ImageDraw.Draw(dummy)
     ow=textw(dd,r['owner'],fit_font(r['owner'],FONT_BOLD,58,664,34))
-    lw=textw(dd,f"{r['length']:.1f}",font(FONT_XB,92))
+    val=f"{r['length']:.1f}"
+    lw=textw(dd,val,fit_font(val,FONT_XB,89,210,72))
