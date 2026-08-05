@@ -78,6 +78,8 @@ jobs:
           assert q['aspect_ratio_policy']['contain_fit_count'] == 0
           assert q['aspect_ratio_policy']['non_uniform_stretch_count'] == 0
           assert q['interior_asset_audit_pass'] is True
+          assert q['interior_exposure_pass'] is True
+          assert min(x['full_opacity_seconds_before_next_wipe'] for x in q['interior_exposure_checks']) >= 1.65
           assert q['transitions']['transparent_ui_overlap_count'] == 0
           assert q['non_rank_media']['legacy_rendered_frame_reuse_count'] == 0
           assert q['review_frame_count'] >= 25
