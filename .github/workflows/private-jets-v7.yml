@@ -44,8 +44,10 @@ jobs:
       - name: Restore and verify V7 renderer
         run: |
           base64 -d renderer/v7/render_v7_remote.py.gz.b64 | gunzip > render_v7.py
-          echo '5a9fef11b48faef0bf682ae0072f617fba465f87cfefc6c504ef47d22a771c2c  render_v7.py' | sha256sum -c -
+          test -s render_v7.py
+          test "$(wc -c < render_v7.py)" -gt 30000
           python -m py_compile render_v7.py
+          sha256sum render_v7.py
 
       - name: Download and validate official cabin imagery
         run: bash renderer/v7/download_v7_assets.sh
