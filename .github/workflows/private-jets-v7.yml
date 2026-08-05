@@ -1,0 +1,98 @@
+name: Private Jets V7 Reviewed Full Package
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deterministic render dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-inter file
+          python -m pip install --upgrade pip
+          python -m pip install pillow
+          ffmpeg -version | head -n 2
+          fc-match Inter
+
+      - name: Download V5 clean master and captions
+        uses: actions/download-artifact@v4
+        with:
+          name: billionaire-private-jets-v5-caption-safe-final
+          path: input_v5
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 30953165315
+
+      - name: Download V6 exact-aircraft source master
+        uses: actions/download-artifact@v4
+        with:
+          name: billionaire-private-jets-v6-full-youtube-package
+          path: input_v6
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 30958159797
+
+      - name: Restore and verify V7 renderer
+        run: |
+          cat renderer/v7/source_parts/part*.py > render_v7.py
+          test -s render_v7.py
+          test "$(wc -c < render_v7.py)" -gt 32000
+          python -m py_compile render_v7.py
+          wc -c render_v7.py
+          sha256sum render_v7.py
+
+      - name: Download and validate official cabin imagery
+        run: bash renderer/v7/download_v7_assets.sh
+
+      - name: Render V7 with approved overlay and cover crops
+        run: python render_v7.py
+
+      - name: Independent final QC
+        run: |
+          FINAL='private_jets_v7/package/Billionaire_Private_Jets_V7_Final_1080x1920_60fps.mp4'
+          test -s "$FINAL"
+          ffprobe -v error \
+            -show_entries format=duration,size \
+            -show_entries stream=index,codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,sample_aspect_ratio,sample_rate,channels,duration \
+            -of json "$FINAL" | tee private_jets_v7/package/ffprobe-final.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          q=json.loads(Path('private_jets_v7/package/V7_QC_REPORT.json').read_text())
+          assert q['all_pass'] is True
+          assert q['technical']['resolution'] == [1080,1920]
+          assert q['technical']['fps'] == '60/1'
+          assert 58.0 <= q['technical']['duration'] < 60.0
+          assert q['technical']['audio_video_delta'] < 0.10
+          assert q['narration']['source_count'] == 1
+          assert q['narration']['per_phrase_speed_changes'] == 0
+          assert q['aspect_ratio_policy']['contain_fit_count'] == 0
+          assert q['aspect_ratio_policy']['non_uniform_stretch_count'] == 0
+          assert q['interior_asset_audit_pass'] is True
+          assert q['interior_exposure_pass'] is True
+          assert min(x['full_opacity_seconds_before_next_wipe'] for x in q['interior_exposure_checks']) >= 1.65
+          assert q['transitions']['transparent_ui_overlap_count'] == 0
+          assert q['non_rank_media']['legacy_rendered_frame_reuse_count'] == 0
+          assert q['review_frame_count'] >= 25
+          PY
+          ffmpeg -hide_banner -i "$FINAL" -vf 'blackdetect=d=0.12:pix_th=0.10' -an -f null - 2> private_jets_v7/package/independent-black-frame-scan.log
+          ffmpeg -hide_banner -i "$FINAL" -af 'silencedetect=noise=-48dB:d=0.70' -vn -f null - 2> private_jets_v7/package/independent-silence-scan.log
+
+      - name: Upload complete reviewed V7 package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: billionaire-private-jets-v7-reviewed-full-package
+          path: private_jets_v7/package/**
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
