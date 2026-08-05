@@ -5,6 +5,21 @@ for i,a,b,txt in MAPPED_CUES:
     for line in lines: widths.append(textw(ImageDraw.Draw(Image.new('RGB',(10,10))),line,font(FONT_SEMI,55)))
     caption_checks.append(dict(cue=i,max_width=max(widths),safe_width=880,pass_=max(widths)<=880,start=round(a,3),end=round(b,3)))
 
+interior_exposure_checks=[]
+for idx,r in enumerate(RANKS):
+    if not r['interior']:
+        continue
+    target=spans[2+idx]+TRANS
+    change=max(2.0,target*0.46)
+    full_seconds=spans[2+idx]-change-0.5
+    interior_exposure_checks.append({
+        'rank':r['rank'],
+        'reveal_start_seconds':round(change,3),
+        'full_opacity_seconds_before_next_wipe':round(full_seconds,3),
+        'minimum_required_seconds':1.65,
+        'pass_':full_seconds>=1.65,
+    })
+
 # contact frames at scene midpoints + transitions
 sample_times=[]
 for a,b in zip(bounds[:-1],bounds[1:]): sample_times.append((a+b)/2)
@@ -12,8 +27,8 @@ for b in bounds[1:-1]: sample_times.append(min(TOTAL-.05,b+TRANS/2))
 # Force review samples before and after every exterior-to-interior change.
 for idx,r in enumerate(RANKS):
     scene_start=bounds[2+idx]; target=spans[2+idx]+TRANS
-    change=max(2.45,target-1.75) if r['interior'] else max(3.2,target-1.3)
-    sample_times.extend([scene_start+min(1.1,spans[2+idx]*.3), min(TOTAL-.05,scene_start+change+.65)])
+    change=max(2.0,target*0.46) if r['interior'] else max(3.2,target-1.3)
+    sample_times.extend([scene_start+min(1.1,spans[2+idx]*.3), min(TOTAL-.05,scene_start+change+.75)])
 sample_times=sorted(set(round(t,3) for t in sample_times))
 frames=[]
 fd=WORK/'review_frames'; fd.mkdir(exist_ok=True)
@@ -47,6 +62,8 @@ qc={
  'narration': {'source_count':1,'uniform_speed':SPEED,'per_phrase_speed_changes':0,'inserted_pause_seconds':[p for _,p in INSERTIONS],'estimated_words_per_minute':round(wpm,1),'pass':1==1 and .94<=SPEED<=1.03 and all(.18<=p<=.65 for _,p in INSERTIONS)},
  'interior_asset_audit': asset_audit,
  'interior_asset_audit_pass': all(x['pass'] for x in asset_audit),
+ 'interior_exposure_checks':interior_exposure_checks,
+ 'interior_exposure_pass':all(x['pass_'] for x in interior_exposure_checks),
  'aspect_ratio_policy': {'mode':'cover_crop','required_filter':'force_original_aspect_ratio=increase + crop','contain_fit_count':0,'non_uniform_stretch_count':0,'pass':True},
  'transitions': {'type':'opaque wipeleft','duration_seconds':TRANS,'hard_concat_count':0,'transparent_ui_overlap_count':0,'pass':True},
  'non_rank_media': {'legacy_rendered_frame_reuse_count':0,'clean_source_compositions':['rank5 exterior','exterior/model split','G800/A340 comparison split','rank1 exterior'],'pass':True},
@@ -55,7 +72,7 @@ qc={
  'caption_checks':caption_checks,
  'scene_count':len(scene_files),'review_frame_count':len(frames)
 }
-for group in [layout_checks,caption_checks]:
+for group in [layout_checks,caption_checks,interior_exposure_checks]:
     if not all(x['pass_'] for x in group): qc['all_pass']=False
 for k,v in qc['technical'].items():
     if k.endswith('_pass') and not v: qc['all_pass']=False
